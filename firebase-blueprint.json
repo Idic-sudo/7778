@@ -1,0 +1,70 @@
+{
+  "entities": {
+    "PromptItem": {
+      "title": "Prompt Item",
+      "description": "Saved and custom engineered prompts",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "maxLength": 200 },
+        "prompt": { "type": "string", "maxLength": 10000 },
+        "category_id": { "type": "string", "maxLength": 50 },
+        "difficulty": { "type": "string", "maxLength": 20 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "prompt", "userId"]
+    },
+    "Favorite": {
+      "title": "Favorite Prompt",
+      "description": "User favorite prompt mapping",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "promptId": { "type": "string", "maxLength": 128 },
+        "savedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "promptId"]
+    },
+    "PromptVersion": {
+      "title": "Prompt Version",
+      "description": "Versioning system for prompts",
+      "type": "object",
+      "properties": {
+        "promptId": { "type": "string", "maxLength": 128 },
+        "version": { "type": "integer" },
+        "promptText": { "type": "string", "maxLength": 10000 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["promptId", "version", "promptText"]
+    },
+    "PromptAnalytics": {
+      "title": "Prompt Analytics",
+      "description": "Usage analytics for prompts",
+      "type": "object",
+      "properties": {
+        "promptId": { "type": "string", "maxLength": 128 },
+        "usageCount": { "type": "integer" },
+        "lastUsedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["promptId", "usageCount"]
+    }
+  },
+  "firestore": {
+    "/prompts/{promptId}": {
+      "schema": { "$ref": "#/entities/PromptItem" },
+      "description": "Engineered prompts collection"
+    },
+    "/favorites/{favoriteId}": {
+      "schema": { "$ref": "#/entities/Favorite" },
+      "description": "User favorites collection"
+    },
+    "/prompts/{promptId}/versions/{versionId}": {
+      "schema": { "$ref": "#/entities/PromptVersion" },
+      "description": "Versioning for prompts"
+    },
+    "/analytics/{analyticsId}": {
+      "schema": { "$ref": "#/entities/PromptAnalytics" },
+      "description": "Analytics for prompts"
+    }
+  }
+}

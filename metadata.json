@@ -1,0 +1,6 @@
+{
+  "name": "PromptStudio AI",
+  "description": "منصة احترافية متكاملة لهندسة، توليد، وتدقيق برومبتات الذكاء الاصطناعي واختبار النماذج المتعددة.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
