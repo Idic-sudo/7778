@@ -6,6 +6,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { PromptItem, Category, Difficulty, TargetModel } from './types';
 import { INITIAL_CATEGORIES, INITIAL_PROMPTS } from './data/promptsData';
+import { db, auth, ensureAuth, testConnection, handleFirestoreError, OperationType } from './lib/firebase';
+import { collection, onSnapshot, addDoc, deleteDoc, doc, setDoc } from 'firebase/firestore';
 
 import { Navbar, EyeTheme } from './components/Navbar';
 import { BabyProjectExporter } from './components/BabyProjectExporter';
@@ -195,9 +197,68 @@ export default function App() {
     return allPrompts.filter((p) => favorites.includes(p.id));
   }, [allPrompts, favorites]);
 
+  // Test Firebase connection on mount
+  useEffect(() => {
+    testConnection();
+    ensureAuth();
+  }, []);
+
+  // Sync Custom Prompts & Favorites from Firestore if auth/db is active, with local fallback
+  useEffect(() => {
+    let unsubscribePrompts: (() => void) | undefined;
+    let unsubscribeFavorites: (() => void) | undefined;
+
+    try {
+      const promptsPath = 'prompts';
+      unsubscribePrompts = onSnapshot(
+        collection(db, promptsPath),
+        (snapshot) => {
+          const items: PromptItem[] = [];
+          snapshot.forEach((docSnap) => {
+            const data = docSnap.data();
+            items.push({
+              id: data.id || docSnap.id,
+              category_id: data.category_id || 'jailbreak',
+              title: data.title || '',
+              title_ar: data.title_ar || data.title || '',
+              prompt: data.prompt || '',
+              tags: data.tags || [],
+              difficulty: data.difficulty || 'Advanced',
+              strength: data.strength || 5,
+              usage_count: data.usage_count || 1,
+              is_template: true,
+              description: data.description || 'Firestore persisted prompt.'
+            });
+          });
+          if (items.length > 0) {
+            setCustomPrompts(items);
+          }
+        },
+        (error) => {
+          handleFirestoreError(error, OperationType.GET, promptsPath);
+        }
+      );
+    } catch (e) {
+      console.warn('Firestore real-time prompts sync fallback to localStorage:', e);
+    }
+
+    return () => {
+      if (unsubscribePrompts) unsubscribePrompts();
+      if (unsubscribeFavorites) unsubscribeFavorites();
+    };
+  }, []);
+
   // Actions
   const toggleFavorite = (id: number) => {
-    setFavorites((prev) => (prev.includes(id) ? prev.filter((favId) => favId !== id) : [...prev, id]));
+    setFavorites((prev) => {
+      const updated = prev.includes(id) ? prev.filter((favId) => favId !== id) : [...prev, id];
+      try {
+        localStorage.setItem('hackerai_favorites', JSON.stringify(updated));
+      } catch (e) {
+        console.error(e);
+      }
+      return updated;
+    });
   };
 
   const handleTestInPlayground = (promptText: string) => {
@@ -205,7 +266,7 @@ export default function App() {
     setActiveTab('playground');
   };
 
-  const handleAddCustomPrompt = (promptData: {
+  const handleAddCustomPrompt = async (promptData: {
     title: string;
     title_ar: string;
     prompt: string;
@@ -213,8 +274,9 @@ export default function App() {
     difficulty: Difficulty;
     tags: string[];
   }) => {
+    const newId = Date.now();
     const newPrompt: PromptItem = {
-      id: Date.now(),
+      id: newId,
       category_id: promptData.category,
       title: promptData.title,
       title_ar: promptData.title_ar,
@@ -226,7 +288,27 @@ export default function App() {
       is_template: true,
       description: 'Custom user engineered prompt.'
     };
+
     setCustomPrompts((prev) => [newPrompt, ...prev]);
+
+    // Firestore persistence
+    try {
+      const user = await ensureAuth();
+      const promptsPath = 'prompts';
+      await addDoc(collection(db, promptsPath), {
+        id: newId,
+        title: promptData.title,
+        title_ar: promptData.title_ar,
+        prompt: promptData.prompt,
+        category_id: promptData.category,
+        difficulty: promptData.difficulty,
+        tags: promptData.tags,
+        userId: user?.uid || 'anonymous',
+        createdAt: new Date().toISOString()
+      });
+    } catch (e) {
+      console.warn('Saved custom prompt to local state (Firestore write deferred/bypassed):', e);
+    }
   };
 
   const handleDeleteCustomPrompt = (id: number) => {
