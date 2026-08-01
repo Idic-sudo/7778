@@ -1,7 +1,7 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
-import { execSync, execFile, spawn } from "child_process";
+import { execSync, execFile, spawn, spawnSync, ChildProcess } from "child_process";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import rateLimit from "express-rate-limit";
