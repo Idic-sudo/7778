@@ -1,6 +1,8 @@
 import React, { useState, useRef } from 'react';
 import { Shield, Lock, Upload, Download, Eye, Cpu, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { InjectionResult } from '../types';
+import piexif from 'piexifjs';
+import JSZip from 'jszip';
 
 export const FileInjectionEngine: React.FC = () => {
   const [payload, setPayload] = useState('');
@@ -15,6 +17,18 @@ export const FileInjectionEngine: React.FC = () => {
   const [resultMeta, setResultMeta] = useState<InjectionResult | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const utf8ToBase64 = (str: string) => {
+    const bytes = new TextEncoder().encode(str);
+    let bin = '';
+    bytes.forEach((b) => (bin += String.fromCharCode(b)));
+    return btoa(bin);
+  };
+  const base64ToUtf8 = (b64: string) => {
+    const bin = atob(b64);
+    const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -34,34 +48,34 @@ export const FileInjectionEngine: React.FC = () => {
         const base = c <= 'Z' ? 65 : 97;
         return String.fromCharCode(base + ((c.charCodeAt(0) - base + 13) % 26));
       });
-      return btoa(rot13);
+      return utf8ToBase64(rot13);
     } else if (encryptionLayer === 'xor') {
       let xored = '';
       for (let i = 0; i < text.length; i++) {
         xored += String.fromCharCode(text.charCodeAt(i) ^ secretKey.charCodeAt(i % secretKey.length));
       }
-      return btoa(xored);
+      return utf8ToBase64(xored);
     }
-    return btoa(text);
+    return utf8ToBase64(text);
   };
 
   const decodeEncryption = (encoded: string): string => {
     try {
       if (encryptionLayer === 'base64_rot13') {
-        const decodedBase64 = atob(encoded);
+        const decodedBase64 = base64ToUtf8(encoded);
         return decodedBase64.replace(/[a-zA-Z]/g, (c) => {
           const base = c <= 'Z' ? 65 : 97;
           return String.fromCharCode(base + ((c.charCodeAt(0) - base + 13) % 26));
         });
       } else if (encryptionLayer === 'xor') {
-        const raw = atob(encoded);
+        const raw = base64ToUtf8(encoded);
         let original = '';
         for (let i = 0; i < raw.length; i++) {
           original += String.fromCharCode(raw.charCodeAt(i) ^ secretKey.charCodeAt(i % secretKey.length));
         }
         return original;
       }
-      return atob(encoded);
+      return base64ToUtf8(encoded);
     } catch {
       return encoded;
     }
@@ -119,15 +133,30 @@ export const FileInjectionEngine: React.FC = () => {
           payloadSize: payload.length,
           distortion
         });
+      } else if (injectionMethod === 'zip') {
+        const zip = new JSZip();
+        zip.file('payload.txt', utf8ToBase64(processedText));
+        zip.file('cover.jpg', previewUrl!.split(',')[1], { base64: true });
+        const blob = await zip.generateAsync({ type: 'blob' });
+        setProcessedUrl(URL.createObjectURL(blob));
+        setResultMeta({ success: true, type: 'zip', payloadSize: payload.length, distortion: 0 });
       } else {
-        // EXIF or ZIP Simulation payload wrapping
-        setProcessedUrl(previewUrl);
-        setResultMeta({
-          success: true,
-          type: injectionMethod,
-          payloadSize: payload.length,
-          distortion: 0.01
-        });
+        // EXIF — يعمل على JPEG الأصلي فقط
+        if (!selectedFile.type.includes('jpeg')) {
+          alert('حقن EXIF يعمل على JPEG الأصلي فقط (وليس PNG من canvas)');
+          setLoading(false);
+          return;
+        }
+        const buffer = await selectedFile.arrayBuffer();
+        let binary = '';
+        new Uint8Array(buffer).forEach((b) => (binary += String.fromCharCode(b)));
+        const exifObj = piexif.load(binary);
+        exifObj['0th'][piexif.ImageIFD.Make] = utf8ToBase64(processedText);
+        const newJpeg = piexif.insert(piexif.dump(exifObj), binary);
+        const bytes = new Uint8Array(newJpeg.length);
+        for (let i = 0; i < newJpeg.length; i++) bytes[i] = newJpeg.charCodeAt(i);
+        setProcessedUrl(URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' })));
+        setResultMeta({ success: true, type: 'exif', payloadSize: payload.length, distortion: 0 });
       }
     } catch (err: any) {
       alert('Injection error: ' + err.message);
@@ -140,39 +169,51 @@ export const FileInjectionEngine: React.FC = () => {
     if (!processedUrl && !previewUrl) return;
     setLoading(true);
     try {
-      const img = new Image();
-      img.src = processedUrl || previewUrl!;
-      await new Promise((resolve) => { img.onload = resolve; });
+      if (injectionMethod === 'lsb') {
+        const img = new Image();
+        img.src = processedUrl || previewUrl!;
+        await new Promise((resolve) => { img.onload = resolve; });
 
-      const canvas = document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      ctx.drawImage(img, 0, 0);
-      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const data = imgData.data;
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        ctx.drawImage(img, 0, 0);
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imgData.data;
 
-      let bits = '';
-      for (let i = 0; i < data.length; i += 4) {
-        for (let j = 0; j < 3; j++) {
-          bits += (data[i + j] & 1).toString();
+        let bits = '';
+        for (let i = 0; i < data.length; i += 4) {
+          for (let j = 0; j < 3; j++) {
+            bits += (data[i + j] & 1).toString();
+          }
         }
-      }
 
-      const lengthBits = bits.slice(0, 32);
-      const payloadLength = parseInt(lengthBits, 2);
+        const lengthBits = bits.slice(0, 32);
+        const payloadLength = parseInt(lengthBits, 2);
 
-      let extractedRaw = '';
-      for (let i = 32; i < 32 + payloadLength * 8; i += 8) {
-        const byte = bits.slice(i, i + 8);
-        if (byte.length === 8) {
-          extractedRaw += String.fromCharCode(parseInt(byte, 2));
+        let extractedRaw = '';
+        for (let i = 32; i < 32 + payloadLength * 8; i += 8) {
+          const byte = bits.slice(i, i + 8);
+          if (byte.length === 8) {
+            extractedRaw += String.fromCharCode(parseInt(byte, 2));
+          }
         }
-      }
 
-      const decrypted = decodeEncryption(extractedRaw);
-      setExtractedPayload(decrypted);
+        const decrypted = decodeEncryption(extractedRaw);
+        setExtractedPayload(decrypted);
+      } else if (injectionMethod === 'exif') {
+        const response = await fetch(processedUrl || previewUrl!);
+        const arrayBuffer = await response.arrayBuffer();
+        const binaryString = String.fromCharCode(...new Uint8Array(arrayBuffer));
+        const loaded = piexif.load(binaryString);
+        const extracted = loaded['0th'][piexif.ImageIFD.Make] || '';
+        setExtractedPayload(decodeEncryption(extracted));
+      } else if (injectionMethod === 'zip') {
+        // ZIP extraction logic is complex without file name/blob context
+        alert('ZIP extraction needs full file download/processing.');
+      }
     } catch (err: any) {
       alert('Extraction failed: ' + err.message);
     } finally {

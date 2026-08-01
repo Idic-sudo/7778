@@ -88,6 +88,7 @@ export default function App() {
     | 'hunter_system'
     | 'payload_forge'
     | 'prompt_os'
+    | 'msf_console'
   >('directory');
 
   const [searchQuery, setSearchQuery] = useState('');

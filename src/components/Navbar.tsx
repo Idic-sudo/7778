@@ -58,7 +58,8 @@ export interface NavbarProps {
     | 'prompt_chain'
     | 'hunter_system'
     | 'payload_forge'
-    | 'prompt_os';
+    | 'prompt_os'
+    | 'msf_console';
   setActiveTab: (
     tab:
       | 'directory'
@@ -88,6 +89,7 @@ export interface NavbarProps {
       | 'hunter_system'
       | 'payload_forge'
       | 'prompt_os'
+      | 'msf_console'
   ) => void;
   language: 'ar' | 'en';
   setLanguage: (lang: 'ar' | 'en') => void;
@@ -431,6 +433,11 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <Target className="w-4 h-4 text-rose-500" />
             <span>{isAr ? 'نظام الصيد (Hunter System)' : 'Hunter System'}</span>
+          </button>
+
+          <button onClick={() => setActiveTab('msf_console')} className={`flex items-center gap-2 px-3.5 py-1.5 text-xs font-semibold rounded-xl whitespace-nowrap shrink-0 transition-all ${activeTab === 'msf_console' ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40 shadow-sm font-bold' : 'text-rose-400/80 hover:text-rose-300 hover:bg-rose-500/10'}`}>
+            <Bomb size={14} />
+            {isAr ? 'الميتاسبلويت' : 'Metasploit'}
           </button>
 
           <button
